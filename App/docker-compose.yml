@@ -1,0 +1,29 @@
+version: "3.8"
+
+services:
+  cf-ddns-manager:
+    # Option 1: Build from source (default)
+    build: .
+    # Option 2: Use pre-built image from Docker Hub (uncomment and comment out build above)
+    # image: nqthaivl/cloudflare-ddns:latest
+    container_name: cf-ddns-manager
+    restart: unless-stopped
+    ports:
+      - "9797:9797"
+    volumes:
+      - cf_ddns_data:/app/data
+    environment:
+      - FLASK_APP=app.py
+      - PYTHONUNBUFFERED=1
+      - CF_DDNS_PORT=9797
+      # Set a strong secret key for session security (change this!)
+      - CF_DDNS_SECRET=change-this-to-a-random-secret-string
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import requests; requests.get('http://localhost:9797/api/ip', timeout=5)" ]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  cf_ddns_data:
+    driver: local

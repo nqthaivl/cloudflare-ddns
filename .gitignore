@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+ENV/
+env/
+.env
+
+# App data (sensitive)
+App/data/
+App/config.json
+App/credentials.json
+App/*.log
+App/logs/
+
+# Synology package build
+App/lib/
+App/*.spk
+App/*.zip
+Apps/spk/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Docker
+.dockerignore

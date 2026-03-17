@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloudflare DDNS Manager | Synology</title>
+    <meta name="description" content="Quản lý DNS Cloudflare và cập nhật IP động cho Synology NAS">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☁️</text></svg>">
+</head>
+
+<body>
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- ═══ Login Page ═══ -->
+    <div class="login-overlay" id="loginOverlay">
+        <div class="login-card">
+            <div class="login-header">
+                <div class="login-logo">☁️</div>
+                <h1 class="login-title">CF DDNS Manager</h1>
+                <p class="login-subtitle">Đăng nhập để quản lý</p>
+            </div>
+            <div class="login-form">
+                <div class="form-group">
+                    <label class="form-label">Tên đăng nhập</label>
+                    <input type="text" class="form-input" id="loginUsername" placeholder="admin" autocomplete="username"
+                        value="admin"
+                        onkeydown="if(event.key==='Enter')document.getElementById('loginPassword').focus()">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Mật khẩu</label>
+                    <input type="password" class="form-input" id="loginPassword" placeholder="••••••••"
+                        autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+                </div>
+                <div class="login-error hidden" id="loginError">
+                    <span>Sai tên đăng nhập hoặc mật khẩu</span>
+                </div>
+                <button class="btn btn-primary btn-login" id="loginBtn" onclick="doLogin()">
+                    🔐 Đăng nhập
+                </button>
+            </div>
+            <div class="login-footer">
+                Tài khoản mặc định: admin / admin
+            </div>
+        </div>
+    </div>
+
+    <div class="app-layout" id="appLayout" style="display:none;">
+        <!-- ═══ Sidebar ═══ -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-logo">☁️</div>
+                <div class="sidebar-brand">
+                    <h1>CF DDNS</h1>
+                    <span>Synology Manager</span>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <div class="nav-section-title" data-i18n="nav.overview">Tổng quan</div>
+                    <div class="nav-item active" data-page="dashboard" onclick="switchPage('dashboard')">
+                        <span class="nav-item-icon">📊</span>
+                        <span data-i18n="nav.dashboard">Dashboard</span>
+                    </div>
+                </div>
+
+                <div class="nav-section">
+                    <div class="nav-section-title" data-i18n="nav.management">Quản lý</div>
+                    <div class="nav-item" data-page="domains" onclick="switchPage('domains')">
+                        <span class="nav-item-icon">🌐</span>
+                        <span data-i18n="nav.domains">Domains</span>
+                        <span class="nav-item-badge" id="domainCount">0</span>
+                    </div>
+                    <div class="nav-item" data-page="records" onclick="switchPage('records')">
+                        <span class="nav-item-icon">📋</span>
+                        <span data-i18n="nav.dns_records">DNS Records</span>
+                    </div>
+                    <div class="nav-item" data-page="tunnels" onclick="switchPage('tunnels')">
+                        <span class="nav-item-icon">🚇</span>
+                        <span data-i18n="nav.tunnels">Tunnels</span>
+                        <span class="nav-item-badge" id="tunnelCount">0</span>
+                    </div>
+                </div>
+
+                <div class="nav-section">
+                    <div class="nav-section-title" data-i18n="nav.ddns_section">DDNS</div>
+                    <div class="nav-item" data-page="ddns" onclick="switchPage('ddns')">
+                        <span class="nav-item-icon">🔄</span>
+                        <span data-i18n="nav.dynamic_dns">Dynamic DNS</span>
+                    </div>
+                    <div class="nav-item" data-page="logs" onclick="switchPage('logs')">
+                        <span class="nav-item-icon">📝</span>
+                        <span data-i18n="nav.logs">Nhật ký</span>
+                    </div>
+                </div>
+
+                <div class="nav-section">
+                    <div class="nav-section-title" data-i18n="nav.settings_section">Cài đặt</div>
+                    <div class="nav-item" data-page="settings" onclick="switchPage('settings')">
+                        <span class="nav-item-icon">⚙️</span>
+                        <span data-i18n="nav.settings">Cấu hình</span>
+                    </div>
+                    <div class="nav-item donate-nav" onclick="openModal('donateModal')">
+                        <span class="nav-item-icon">☕</span>
+                        <span data-i18n="nav.donate">Mời tôi cafe</span>
+                    </div>
+                </div>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="ip-display">
+                    <div class="ip-dot" id="ipDot"></div>
+                    <div class="ip-info">
+                        <div class="ip-label" data-i18n="sidebar.current_ip">IP hiện tại</div>
+                        <div class="ip-value" id="currentIp" data-i18n="sidebar.loading">Đang tải...</div>
+                    </div>
+                </div>
+                <div class="sidebar-user">
+                    <span class="sidebar-user-icon">👤</span>
+                    <span class="sidebar-user-name" id="loggedInUser">admin</span>
+                    <button class="btn-logout" onclick="doLogout()" title="Đăng xuất"
+                        data-i18n="login.logout">🚪</button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ═══ Main Content ═══ -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="main-header">
+                <div class="page-title">
+                    <button class="mobile-toggle" onclick="toggleSidebar()">☰</button>
+                    <span class="page-title-icon" id="pageIcon">📊</span>
+                    <h2 id="pageTitle">Dashboard</h2>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-secondary btn-sm" onclick="refreshCurrentPage()" data-i18n="header.refresh">
+                        🔄 Làm mới
+                    </button>
+                    <button class="btn btn-secondary btn-sm theme-toggle-btn" onclick="toggleLang()" id="langToggleBtn"
+                        title="Switch Language">
+                        🇻🇳
+                    </button>
+                    <button class="btn btn-secondary btn-sm theme-toggle-btn" onclick="toggleTheme()"
+                        id="themeToggleBtn" title="Toggle Theme">
+                        🌙
+                    </button>
+                </div>
+            </header>
+
+            <!-- Content Area -->
+            <div class="content-area">
+
+                <!-- ═══ Setup Page (shown when no token) ═══ -->
+                <div class="page-section" id="page-setup">
+                    <div class="setup-container">
+                        <div class="setup-icon">🔐</div>
+                        <h2>Chào mừng đến CF DDNS Manager</h2>
+                        <p>Để bắt đầu, vui lòng nhập Cloudflare API Token của bạn.<br>
+                            Token cần có quyền <strong>Zone:Read</strong>, <strong>Zone:Edit</strong>,
+                            <strong>DNS:Read</strong>, <strong>DNS:Edit</strong>.
+                        </p>
+                        <div class="setup-form">
+                            <div class="form-group">
+                                <label class="form-label">API Token</label>
+                                <input type="password" class="form-input" id="setupToken"
+                                    placeholder="Dán Cloudflare API Token tại đây...">
+                                <div class="form-hint">Tạo token tại: dash.cloudflare.com → My Profile → API Tokens
+                                </div>
+                            </div>
+                            <button class="btn btn-primary w-full" onclick="saveToken()" id="setupBtn">
+                                🚀 Kết nối Cloudflare
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ═══ Dashboard Page ═══ -->
+                <div class="page-section" id="page-dashboard">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon orange">🌐</div>
+                            <div class="stat-info">
+                                <h4>Domains</h4>
+                                <div class="stat-value" id="statDomains">0</div>
+                                <div class="stat-sub">Tên miền đang quản lý</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon blue">📋</div>
+                            <div class="stat-info">
+                                <h4>DNS Records</h4>
+                                <div class="stat-value" id="statRecords">0</div>
+                                <div class="stat-sub">Tổng số bản ghi</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon" style="background: rgba(139, 92, 246, 0.1);">🚇</div>
+                            <div class="stat-info">
+                                <h4>Tunnels</h4>
+                                <div class="stat-value" id="statTunnels">0</div>
+                                <div class="stat-sub">Cloudflare Tunnels</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon green">🔄</div>
+                            <div class="stat-info">
+                                <h4>DDNS</h4>
+                                <div class="stat-value" id="statDdns">Tắt</div>
+                                <div class="stat-sub" id="statDdnsRecords">0 records đang theo dõi</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon yellow">⏰</div>
+                            <div class="stat-info">
+                                <h4>Cập nhật cuối</h4>
+                                <div class="stat-value text-sm" id="statLastUpdate">N/A</div>
+                                <div class="stat-sub" id="statInterval">Mỗi 5 phút</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Activity -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>📝 Hoạt động gần đây</h3>
+                        </div>
+                        <div class="card-body" style="padding: 0;">
+                            <div class="log-list" id="dashboardLogs">
+                                <div class="empty-state">
+                                    <div class="empty-state-icon">📭</div>
+                                    <h4>Chưa có hoạt động</h4>
+                                    <p>Các bản cập nhật DDNS sẽ hiển thị tại đây</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ═══ Domains Page ═══ -->
+                <div class="page-section" id="page-domains">
+                    <div class="flex items-center justify-between mb-16">
+                        <p class="text-muted text-sm">Quản lý các tên miền trên Cloudflare</p>
+                        <button class="btn btn-primary" onclick="openAddDomainModal()">
+                            ➕ Thêm Domain
+                        </button>
+                    </div>
+
+                    <div class="zone-grid" id="zoneGrid">
+                        <!-- Zones will be loaded here -->
+                    </div>
+                </div>
+
+                <!-- ═══ DNS Records Page ═══ -->
+                <div class="page-section" id="page-records">
+                    <div class="flex items-center justify-between mb-16">
+                        <div class="flex items-center gap-8">
+                            <select class="form-select" id="recordZoneSelect" onchange="loadRecords()"
+                                style="min-width:240px;">
+                                <option value="">-- Chọn Domain --</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" onclick="openAddRecordModal()" id="addRecordBtn" disabled>
+                            ➕ Thêm Record
+                        </button>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-body" style="padding: 0;">
+                            <div class="table-wrapper">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Loại</th>
+                                            <th>Tên</th>
+                                            <th>Nội dung</th>
+                                            <th>TTL</th>
+                                            <th>Proxy</th>
+                                            <th>DDNS</th>
+                                            <th>Hành động</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="recordsTable">
+                                        <tr>
+                                            <td colspan="7">
+                                                <div class="empty-state">
+                                                    <div class="empty-state-icon">📋</div>
+                                                    <h4>Chọn một domain</h4>
+                                                    <p>Chọn domain từ danh sách bên trên để xem DNS records</p>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ═══ Tunnels Page ═══ -->
+                <div class="page-section" id="page-tunnels">
+                    <div class="flex items-center justify-between mb-16">
+                        <p class="text-muted text-sm">Quản lý Cloudflare Tunnels - kết nối dịch vụ nội bộ ra internet
+                        </p>
+                        <button class="btn btn-primary" onclick="openCreateTunnelModal()">
+                            ➕ Tạo Tunnel
+                        </button>
+                    </div>
+
+                    <div class="tunnel-grid" id="tunnelGrid">
+                        <!-- Tunnels will be loaded here -->
+                    </div>
+                </div>
+
+                <!-- ═══ DDNS Page ═══ -->
+                <div class="page-section" id="page-ddns">
+                    <div class="ddns-status-bar">
+                        <div class="status-indicator">
+                            <div class="status-dot" id="ddnsStatusDot"></div>
+                            <span id="ddnsStatusText">Đang tải...</span>
+                        </div>
+                        <span class="text-muted text-sm" id="ddnsIpDisplay">IP: --</span>
+                        <div class="status-actions">
+                            <button class="btn btn-success btn-sm" onclick="startDdns()" id="ddnsStartBtn">
+                                ▶️ Bắt đầu
+                            </button>
+                            <button class="btn btn-danger btn-sm" onclick="stopDdns()" id="ddnsStopBtn">
+                                ⏹️ Dừng
+                            </button>
+                            <button class="btn btn-secondary btn-sm" onclick="forceUpdate()">
+                                ⚡ Cập nhật ngay
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card mb-24">
+                        <div class="card-header">
+                            <h3>📡 Records DDNS đang theo dõi</h3>
+                        </div>
+                        <div class="card-body" style="padding: 0;">
+                            <div class="table-wrapper">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Domain</th>
+                                            <th>Record</th>
+                                            <th>Loại</th>
+                                            <th>Hành động</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="ddnsRecordsTable">
+                                        <tr>
+                                            <td colspan="4">
+                                                <div class="empty-state">
+                                                    <div class="empty-state-icon">🔄</div>
+                                                    <h4>Chưa có record DDNS</h4>
+                                                    <p>Vào DNS Records → bật DDNS cho record bạn muốn tự động cập nhật
+                                                        IP</p>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>⏱️ Cấu hình cập nhật</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group mb-0">
+                                <label class="form-label">Khoảng thời gian cập nhật</label>
+                                <div class="flex items-center gap-8">
+                                    <select class="form-select" id="ddnsInterval" onchange="setDdnsInterval()"
+                                        style="max-width: 250px;">
+                                        <option value="60">1 phút</option>
+                                        <option value="120">2 phút</option>
+                                        <option value="300" selected>5 phút</option>
+                                        <option value="600">10 phút</option>
+                                        <option value="900">15 phút</option>
+                                        <option value="1800">30 phút</option>
+                                        <option value="3600">1 giờ</option>
+                                    </select>
+                                </div>
+                                <div class="form-hint">Khoảng thời gian kiểm tra và cập nhật IP nếu có thay đổi</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ═══ Logs Page ═══ -->
+                <div class="page-section" id="page-logs">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>📝 Nhật ký cập nhật</h3>
+                            <button class="btn btn-secondary btn-sm" onclick="loadLogs()">🔄 Làm mới</button>
+                        </div>
+                        <div class="card-body" style="padding: 0;">
+                            <div class="log-list" id="logsContainer">
+                                <div class="empty-state">
+                                    <div class="empty-state-icon">📭</div>
+                                    <h4>Chưa có nhật ký</h4>
+                                    <p>Các hoạt động cập nhật sẽ được ghi nhận tại đây</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ═══ Settings Page ═══ -->
+                <div class="page-section" id="page-settings">
+                    <!-- API Token -->
+                    <div class="card mb-24">
+                        <div class="card-header">
+                            <h3>🔑 API Token</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label class="form-label">Cloudflare API Token</label>
+                                <div class="flex items-center gap-8">
+                                    <input type="password" class="form-input" id="settingsToken"
+                                        placeholder="Nhập API Token mới...">
+                                    <button class="btn btn-primary" onclick="updateToken()">Lưu</button>
+                                </div>
+                                <div class="form-hint">
+                                    Token hiện tại: <span class="font-mono" id="currentTokenDisplay">Chưa cấu
+                                        hình</span>
+                                </div>
+                            </div>
+                            <button class="btn btn-secondary btn-sm" onclick="verifyToken()">
+                                ✅ Kiểm tra Token
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Hướng dẫn lấy API Token -->
+                    <div class="card mb-24">
+                        <div class="card-header">
+                            <h3>📖 Hướng dẫn lấy API Token</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="guide-steps">
+                                <div class="guide-step">
+                                    <div class="guide-step-num">1</div>
+                                    <div class="guide-step-content">
+                                        <strong>Truy cập Cloudflare Dashboard</strong>
+                                        <p>Vào <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank"
+                                                class="link-accent">dash.cloudflare.com/profile/api-tokens</a></p>
+                                    </div>
+                                </div>
+                                <div class="guide-step">
+                                    <div class="guide-step-num">2</div>
+                                    <div class="guide-step-content">
+                                        <strong>Tạo Token mới</strong>
+                                        <p>Chọn <span class="badge badge-info">Create Token</span> → <span
+                                                class="badge badge-orange">Custom Token</span></p>
+                                    </div>
+                                </div>
+                                <div class="guide-step">
+                                    <div class="guide-step-num">3</div>
+                                    <div class="guide-step-content">
+                                        <strong>Cấp quyền (Permissions)</strong>
+                                        <div class="permissions-grid">
+                                            <div class="perm-item"><span class="perm-icon">🌐</span> Zone : Zone : <span
+                                                    class="badge badge-success">Edit</span></div>
+                                            <div class="perm-item"><span class="perm-icon">📋</span> Zone : DNS : <span
+                                                    class="badge badge-success">Edit</span></div>
+                                            <div class="perm-item"><span class="perm-icon">👤</span> Account : Account
+                                                Settings : <span class="badge badge-info">Read</span></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="guide-step">
+                                    <div class="guide-step-num">4</div>
+                                    <div class="guide-step-content">
+                                        <strong>Zone Resources</strong>
+                                        <p>Chọn <span class="badge badge-orange">All Zones</span> hoặc chọn zone cụ thể
+                                        </p>
+                                    </div>
+                                </div>
+                                <div class="guide-step">
+                                    <div class="guide-step-num">5</div>
+                                    <div class="guide-step-content">
+                                        <strong>Tạo và Copy Token</strong>
+                                        <p>Nhấn <span class="badge badge-success">Create Token</span> → Copy token và
+                                            dán vào ô ở trên</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Đổi mật khẩu -->
+                    <div class="card mb-24" id="changePasswordCard">
+                        <div class="card-header">
+                            <h3>🔒 Đổi mật khẩu</h3>
+                        </div>
+                        <div class="card-body">
+                            <div id="firstLoginWarning" class="guide-alert guide-alert-info"
+                                style="display:none; margin-bottom:16px;">
+                                <strong>⚠️ Bảo mật:</strong> Bạn đang sử dụng mật khẩu mặc định.
+                                Hãy đổi mật khẩu để bảo vệ ứng dụng.
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Mật khẩu hiện tại</label>
+                                <input type="password" class="form-input" id="currentPassword"
+                                    placeholder="Nhập mật khẩu hiện tại" autocomplete="current-password">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Mật khẩu mới</label>
+                                <input type="password" class="form-input" id="newPassword"
+                                    placeholder="Nhập mật khẩu mới (tối thiểu 4 ký tự)" autocomplete="new-password">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Xác nhận mật khẩu mới</label>
+                                <input type="password" class="form-input" id="confirmPassword"
+                                    placeholder="Nhập lại mật khẩu mới" autocomplete="new-password"
+                                    onkeydown="if(event.key==='Enter')doChangePassword()">
+                            </div>
+                            <button class="btn btn-primary" onclick="doChangePassword()" id="changePasswordBtn">
+                                🔑 Đổi mật khẩu
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Giao diện -->
+                    <div class="card mb-24">
+                        <div class="card-header">
+                            <h3 data-i18n="settings.theme_title">🎨 Giao diện</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group mb-0">
+                                <label class="form-label" data-i18n="settings.theme_label">Chế độ hiển thị</label>
+                                <div class="theme-selector">
+                                    <button class="theme-option active" data-theme="dark" onclick="setTheme('dark')">
+                                        <span class="theme-option-icon">🌙</span>
+                                        <span data-i18n="settings.theme_dark">Dark Mode</span>
+                                    </button>
+                                    <button class="theme-option" data-theme="light" onclick="setTheme('light')">
+                                        <span class="theme-option-icon">☀️</span>
+                                        <span data-i18n="settings.theme_light">Light Mode</span>
+                                    </button>
+                                    <button class="theme-option" data-theme="auto" onclick="setTheme('auto')">
+                                        <span class="theme-option-icon">💻</span>
+                                        <span data-i18n="settings.theme_auto">Theo hệ thống</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Ngôn ngữ -->
+                    <div class="card mb-24">
+                        <div class="card-header">
+                            <h3 data-i18n="settings.lang_title">🌐 Ngôn ngữ</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group mb-0">
+                                <label class="form-label" data-i18n="settings.lang_label">Chọn ngôn ngữ</label>
+                                <div class="theme-selector">
+                                    <button class="lang-option active" data-lang="vi" onclick="setLang('vi')">
+                                        <span class="theme-option-icon">🇻🇳</span>
+                                        <span>Tiếng Việt</span>
+                                    </button>
+                                    <button class="lang-option" data-lang="en" onclick="setLang('en')">
+                                        <span class="theme-option-icon">🇬🇧</span>
+                                        <span>English</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Thông tin tác giả -->
+                    <div class="card mb-24">
+                        <div class="card-header">
+                            <h3>👨‍💻 Thông tin Tác giả</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="author-card">
+                                <div class="author-avatar">NT</div>
+                                <div class="author-info">
+                                    <h4 class="author-name">Nguyễn Thái</h4>
+                                    <div class="author-links">
+                                        <a href="https://aff.1touch.pro" target="_blank" class="author-link">
+                                            🌐 aff.1touch.pro
+                                        </a>
+                                        <a href="https://www.facebook.com/nqthaivl.1982/" target="_blank"
+                                            class="author-link">
+                                            📘 Nguyễn Thái
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Thông tin ứng dụng -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>ℹ️ Thông tin ứng dụng</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="app-info-grid">
+                                <div class="app-info-item">
+                                    <span class="app-info-label">Ứng dụng</span>
+                                    <span class="app-info-value">Cloudflare DDNS Manager</span>
+                                </div>
+                                <div class="app-info-item">
+                                    <span class="app-info-label">Phiên bản</span>
+                                    <span class="app-info-value">1.0.0</span>
+                                </div>
+                                <div class="app-info-item">
+                                    <span class="app-info-label">Nền tảng</span>
+                                    <span class="app-info-value">Synology NAS (DSM 7)</span>
+                                </div>
+                                <div class="app-info-item">
+                                    <span class="app-info-label">API</span>
+                                    <span class="app-info-value">Cloudflare API v4</span>
+                                </div>
+                                <div class="app-info-item">
+                                    <span class="app-info-label">Backend</span>
+                                    <span class="app-info-value">HTML</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- ═══ Modals ═══ -->
+
+    <!-- Add Domain Modal -->
+    <div class="modal-overlay" id="addDomainModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>🌐 Thêm Domain</h3>
+                <button class="modal-close" onclick="closeModal('addDomainModal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Tên miền</label>
+                    <input type="text" class="form-input" id="newDomainName" placeholder="example.com">
+                    <div class="form-hint">Nhập tên miền gốc (không có www)</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('addDomainModal')">Hủy</button>
+                <button class="btn btn-primary" onclick="addDomain()" id="addDomainBtn">
+                    ➕ Thêm Domain
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Nameserver Modal -->
+    <div class="modal-overlay" id="nsModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>🔧 Nameservers Cloudflare</h3>
+                <button class="modal-close" onclick="closeModal('nsModal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="ns-display" style="margin-top: 0;">
+                    <div class="ns-title">
+                        📌 Nameservers cho <span id="nsDomainName" style="color: var(--text-primary);"></span>
+                    </div>
+                    <ul class="ns-list" id="nsList">
+                        <!-- NS items will be inserted here -->
+                    </ul>
+                    <div class="ns-instructions">
+                        <strong>Hướng dẫn:</strong><br>
+                        1. Đăng nhập vào nhà cung cấp tên miền của bạn.<br>
+                        2. Tìm phần quản lý DNS / Nameserver.<br>
+                        3. Thay thế nameserver hiện tại bằng các nameserver Cloudflare ở trên.<br>
+                        4. Lưu thay đổi và đợi DNS propagation (có thể mất 24-48 giờ).<br>
+                        5. Sau khi hoàn tất, trạng thái domain sẽ chuyển thành <span
+                            class="badge badge-success">Active</span>.
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="closeModal('nsModal')">Đã hiểu</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add/Edit Record Modal -->
+    <div class="modal-overlay" id="recordModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="recordModalTitle">📋 Thêm DNS Record</h3>
+                <button class="modal-close" onclick="closeModal('recordModal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editRecordId">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Loại Record</label>
+                        <select class="form-select" id="recordType" onchange="onRecordTypeChange()">
+                            <option value="A">A</option>
+                            <option value="AAAA">AAAA</option>
+                            <option value="CNAME">CNAME</option>
+                            <option value="MX">MX</option>
+                            <option value="TXT">TXT</option>
+                            <option value="SRV">SRV</option>
+                            <option value="NS">NS</option>
+                            <option value="CAA">CAA</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="priorityGroup" style="display:none;">
+                        <label class="form-label">Priority</label>
+                        <input type="number" class="form-input" id="recordPriority" placeholder="10" min="0"
+                            max="65535">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Tên</label>
+                    <input type="text" class="form-input" id="recordName" placeholder="@ hoặc subdomain">
+                    <div class="form-hint">Sử dụng @ cho root domain hoặc nhập subdomain</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" id="recordContentLabel">Địa chỉ IPv4</label>
+                    <input type="text" class="form-input" id="recordContent" placeholder="192.168.1.1">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">TTL</label>
+                        <select class="form-select" id="recordTtl">
+                            <option value="1">Tự động</option>
+                            <option value="60">1 phút</option>
+                            <option value="120">2 phút</option>
+                            <option value="300">5 phút</option>
+                            <option value="600">10 phút</option>
+                            <option value="900">15 phút</option>
+                            <option value="1800">30 phút</option>
+                            <option value="3600">1 giờ</option>
+                            <option value="7200">2 giờ</option>
+                            <option value="18000">5 giờ</option>
+                            <option value="43200">12 giờ</option>
+                            <option value="86400">1 ngày</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="proxiedGroup">
+                        <label class="form-label">Proxy qua Cloudflare</label>
+                        <div class="toggle-wrapper" style="margin-top: 8px;">
+                            <label class="toggle">
+                                <input type="checkbox" id="recordProxied">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span class="text-sm text-muted" id="proxiedLabel">DNS only</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('recordModal')">Hủy</button>
+                <button class="btn btn-primary" onclick="saveRecord()" id="saveRecordBtn">
+                    💾 Lưu Record
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tunnel Wizard Modal (All-in-one) -->
+    <div class="modal-overlay" id="tunnelWizardModal">
+        <div class="modal" style="max-width: 680px;">
+            <div class="modal-header">
+                <h3 id="wizardTitle">🚇 Tạo Tunnel mới</h3>
+                <button class="modal-close" onclick="closeModal('tunnelWizardModal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <!-- Wizard Steps Indicator -->
+                <div class="wizard-steps">
+                    <div class="wizard-step active" id="wizStep1"><span class="wizard-step-num">1</span> Đặt tên</div>
+                    <div class="wizard-step-line"></div>
+                    <div class="wizard-step" id="wizStep2"><span class="wizard-step-num">2</span> Thêm Route</div>
+                    <div class="wizard-step-line"></div>
+                    <div class="wizard-step" id="wizStep3"><span class="wizard-step-num">3</span> Hoàn tất</div>
+                </div>
+
+                <!-- Step 1: Tunnel Name -->
+                <div class="wizard-page" id="wizPage1">
+                    <div class="form-group">
+                        <label class="form-label">Tên Tunnel</label>
+                        <input type="text" class="form-input" id="wizTunnelName" placeholder="my-nas-tunnel"
+                            onkeydown="if(event.key==='Enter')wizardNext()">
+                        <div class="form-hint">Tên duy nhất để nhận diện tunnel (vd: nas-services, my-homelab)</div>
+                    </div>
+                </div>
+
+                <!-- Step 2: Add Routes -->
+                <div class="wizard-page" id="wizPage2" style="display:none;">
+                    <p class="text-muted text-sm" style="margin-bottom:16px;">
+                        Mỗi route kết nối một <strong>hostname</strong> (domain/subdomain) với một <strong>dịch vụ
+                            nội bộ</strong> trên mạng LAN.
+                    </p>
+                    <div id="wizRoutesContainer"></div>
+                    <button class="btn btn-secondary btn-sm" onclick="addWizardRoute()" style="margin-top:8px;">
+                        ➕ Thêm route khác
+                    </button>
+                </div>
+
+                <!-- Step 3: Result -->
+                <div class="wizard-page" id="wizPage3" style="display:none;">
+                    <div id="wizSetupProgress">
+                        <div class="text-center" style="padding:30px;">
+                            <span class="spinner" style="width:40px;height:40px;"></span>
+                            <p class="text-muted" style="margin-top:16px;">Đang thiết lập tunnel...</p>
+                        </div>
+                    </div>
+                    <div id="wizSetupResult" style="display:none;">
+                        <div id="wizStepResults"></div>
+                        <div id="wizTokenSection" style="display:none; margin-top:20px;">
+                            <div class="tunnel-config-section">
+                                <h4 style="margin-bottom:12px;">🔌 Kết nối Connector</h4>
+
+                                <div class="guide-alert guide-alert-info">
+                                    <strong>💡 Connector là gì?</strong><br>
+                                    Connector (<code>cloudflared</code>) là chương trình chạy trên NAS/server, tạo đường
+                                    hầm bảo mật giữa dịch vụ nội bộ và Cloudflare. Bạn cần chạy connector để tunnel hoạt
+                                    động.
+                                </div>
+
+                                <!-- Method 1: Container Manager GUI -->
+                                <div class="guide-method">
+                                    <h5>📱 Cách 1: Container Manager (dễ nhất)</h5>
+                                    <div class="guide-steps">
+                                        <div class="guide-step">
+                                            <span class="guide-step-num">1</span>
+                                            <span>Mở <strong>Container Manager</strong> trên DSM</span>
+                                        </div>
+                                        <div class="guide-step">
+                                            <span class="guide-step-num">2</span>
+                                            <span>Vào <strong>Registry → Tìm "cloudflare/cloudflared"</strong>
+                                                → Download tag <code>latest</code></span>
+                                        </div>
+                                        <div class="guide-step">
+                                            <span class="guide-step-num">3</span>
+                                            <span>Vào <strong>Container → Create</strong></span>
+                                        </div>
+                                        <div class="guide-step">
+                                            <span class="guide-step-num">4</span>
+                                            <span>Chọn image <code>cloudflare/cloudflared:latest</code></span>
+                                        </div>
+                                        <div class="guide-step">
+                                            <span class="guide-step-num">5</span>
+                                            <span>Mạng: chọn <strong>"Use the same network as Docker Host"</strong>
+                                            </span>
+                                        </div>
+                                        <div class="guide-step">
+                                            <span class="guide-step-num">6</span>
+                                            <span>Phần <strong>Command</strong>, dán lệnh:</span>
+                                        </div>
+                                    </div>
+                                    <code class="tunnel-token-code" id="wizContainerCmd" style="font-size:11px;"></code>
+                                    <button class="btn btn-secondary btn-sm"
+                                        onclick="copyToClipboard(document.getElementById('wizContainerCmd').textContent)"
+                                        style="margin-top:8px;">📋 Copy lệnh</button>
+                                </div>
+
+                                <!-- Method 2: SSH -->
+                                <div class="guide-method">
+                                    <h5>💻 Cách 2: SSH vào NAS</h5>
+                                    <div class="guide-steps">
+                                        <div class="guide-step">
+                                            <span class="guide-step-num">1</span>
+                                            <span>SSH vào NAS: <code>ssh admin@[NAS-IP]</code></span>
+                                        </div>
+                                        <div class="guide-step">
+                                            <span class="guide-step-num">2</span>
+                                            <span>Chạy lệnh <code>sudo -i</code> (nhập mật khẩu admin)</span>
+                                        </div>
+                                        <div class="guide-step">
+                                            <span class="guide-step-num">3</span>
+                                            <span>Chạy lệnh Docker bên dưới:</span>
+                                        </div>
+                                    </div>
+                                    <code class="tunnel-token-code" id="wizDockerCmd" style="font-size:11px;"></code>
+                                    <button class="btn btn-secondary btn-sm"
+                                        onclick="copyToClipboard(document.getElementById('wizDockerCmd').textContent)"
+                                        style="margin-top:8px;">📋 Copy Docker</button>
+                                </div>
+
+                                <!-- Method 3: Task Scheduler -->
+                                <div class="guide-method">
+                                    <h5>📅 Cách 3: Task Scheduler (tự chạy khi khởi động)</h5>
+                                    <div class="guide-steps">
+                                        <div class="guide-step">
+                                            <span class="guide-step-num">1</span>
+                                            <span><strong>Control Panel → Task Scheduler → Create → Triggered
+                                                    Task → User-defined script</strong></span>
+                                        </div>
+                                        <div class="guide-step">
+                                            <span class="guide-step-num">2</span>
+                                            <span>User: <strong>root</strong>, Event:
+                                                <strong>Boot-up</strong></span>
+                                        </div>
+                                        <div class="guide-step">
+                                            <span class="guide-step-num">3</span>
+                                            <span>Tab <strong>Task Settings</strong>, dán lệnh Docker ở trên</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="wizBtnBack" onclick="wizardBack()" style="display:none;">
+                    ← Quay lại
+                </button>
+                <div style="flex:1;"></div>
+                <button class="btn btn-secondary" onclick="closeModal('tunnelWizardModal')" id="wizBtnCancel">
+                    Hủy
+                </button>
+                <button class="btn btn-primary" id="wizBtnNext" onclick="wizardNext()">
+                    Tiếp theo →
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Route Modal (for existing tunnels) -->
+    <div class="modal-overlay" id="addRouteModal">
+        <div class="modal" style="max-width: 580px;">
+            <div class="modal-header">
+                <h3>➕ Thêm Route</h3>
+                <button class="modal-close" onclick="closeModal('addRouteModal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="addRouteTunnelId">
+                <p class="text-muted text-sm" style="margin-bottom:16px;">
+                    Kết nối hostname tới dịch vụ nội bộ qua tunnel
+                </p>
+                <div class="form-group">
+                    <label class="form-label">Domain</label>
+                    <select class="form-select" id="addRouteZone" onchange="onAddRouteZoneChange()"></select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Subdomain / Hostname</label>
+                    <input type="text" class="form-input" id="addRouteHostname" placeholder="app">
+                    <div class="form-hint" id="addRoutePreview">Hostname đầy đủ sẽ là: <strong>...</strong></div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Dịch vụ nội bộ (URL)</label>
+                    <input type="text" class="form-input" id="addRouteService" placeholder="http://localhost:8080">
+                    <div class="form-hint">VD: http://192.168.1.100:5000, http://localhost:8096, https://localhost:443
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('addRouteModal')">Hủy</button>
+                <button class="btn btn-primary" onclick="submitAddRoute()" id="addRouteBtn">
+                    ➕ Thêm Route
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tunnel Token Modal (for viewing existing tunnel token) -->
+    <div class="modal-overlay" id="tunnelTokenModal">
+        <div class="modal" style="max-width: 640px;">
+            <div class="modal-header">
+                <h3>🔌 Kết nối Connector</h3>
+                <button class="modal-close" onclick="closeModal('tunnelTokenModal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="guide-alert guide-alert-info">
+                    <strong>💡 Connector</strong> cần chạy trên NAS/server để tunnel hoạt động.
+                    Chọn 1 trong các cách dưới đây:
+                </div>
+
+                <!-- Method 1: Container Manager GUI -->
+                <div class="guide-method">
+                    <h5>📱 Cách 1: Container Manager (dễ nhất)</h5>
+                    <div class="guide-steps">
+                        <div class="guide-step">
+                            <span class="guide-step-num">1</span>
+                            <span>Mở <strong>Container Manager</strong> trên DSM</span>
+                        </div>
+                        <div class="guide-step">
+                            <span class="guide-step-num">2</span>
+                            <span>Vào <strong>Registry</strong> → Tìm <code>cloudflare/cloudflared</code> → Download
+                            </span>
+                        </div>
+                        <div class="guide-step">
+                            <span class="guide-step-num">3</span>
+                            <span><strong>Container → Create</strong> → Chọn image → Network: <strong>host</strong>
+                            </span>
+                        </div>
+                        <div class="guide-step">
+                            <span class="guide-step-num">4</span>
+                            <span>Phần <strong>Command</strong>, dán:</span>
+                        </div>
+                    </div>
+                    <code class="tunnel-token-code" id="tokenContainerCmd" style="font-size:11px;">Loading...</code>
+                    <button class="btn btn-secondary btn-sm"
+                        onclick="copyToClipboard(document.getElementById('tokenContainerCmd').textContent)"
+                        style="margin-top:8px;">📋 Copy lệnh</button>
+                </div>
+
+                <!-- Method 2: SSH Docker -->
+                <div class="guide-method">
+                    <h5>💻 Cách 2: SSH (Docker command)</h5>
+                    <div class="guide-steps">
+                        <div class="guide-step">
+                            <span class="guide-step-num">1</span>
+                            <span>SSH: <code>ssh admin@[NAS-IP]</code> → <code>sudo -i</code></span>
+                        </div>
+                        <div class="guide-step">
+                            <span class="guide-step-num">2</span>
+                            <span>Chạy lệnh:</span>
+                        </div>
+                    </div>
+                    <code class="tunnel-token-code" id="tunnelDockerCmd" style="font-size:11px;">Loading...</code>
+                    <button class="btn btn-secondary btn-sm"
+                        onclick="copyToClipboard(document.getElementById('tunnelDockerCmd').textContent)"
+                        style="margin-top:8px;">📋 Copy Docker</button>
+                </div>
+
+                <!-- Method 3: Task Scheduler -->
+                <div class="guide-method">
+                    <h5>📅 Cách 3: Task Scheduler (tự chạy khi boot)</h5>
+                    <div class="guide-steps">
+                        <div class="guide-step">
+                            <span class="guide-step-num">1</span>
+                            <span><strong>Control Panel → Task Scheduler → Create → Triggered Task</strong>
+                            </span>
+                        </div>
+                        <div class="guide-step">
+                            <span class="guide-step-num">2</span>
+                            <span>User: <strong>root</strong>, Event: <strong>Boot-up</strong></span>
+                        </div>
+                        <div class="guide-step">
+                            <span class="guide-step-num">3</span>
+                            <span>Task Settings → dán lệnh Docker ở trên</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="closeModal('tunnelTokenModal')">Đóng</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Donate Modal -->
+    <div class="modal-overlay" id="donateModal">
+        <div class="modal donate-modal" style="max-width: 420px;">
+            <div class="modal-header donate-modal-header">
+                <h3>☕ Mời tôi cafe</h3>
+                <button class="modal-close" onclick="closeModal('donateModal')">✕</button>
+            </div>
+            <div class="modal-body donate-modal-body">
+                <div class="donate-coffee-icon">
+                    <span class="donate-steam">♨</span>
+                    <span class="donate-cup">☕</span>
+                </div>
+                <p class="donate-text">
+                    Nếu ứng dụng hữu ích với bạn,<br>
+                    hãy mời tôi một ly cafe nhé! 💛
+                </p>
+                <div class="donate-qr-container">
+                    <img src="https://api.vietqr.io/image/970436-9917833184-U23nWw9.jpg?accountName=NGUYEN%20QUOC%20THAI&addInfo=Donate"
+                        alt="QR Donate" class="donate-qr-img" loading="lazy">
+                </div>
+                <div class="donate-info">
+                    <div class="donate-info-row">
+                        <span class="donate-info-label">🏦 Ngân hàng</span>
+                        <span class="donate-info-value">Vietcombank</span>
+                    </div>
+                    <div class="donate-info-row">
+                        <span class="donate-info-label">👤 Chủ TK</span>
+                        <span class="donate-info-value">NGUYEN QUOC THAI</span>
+                    </div>
+                    <div class="donate-info-row">
+                        <span class="donate-info-label">💳 Số TK</span>
+                        <span class="donate-info-value"
+                            style="font-family:'JetBrains Mono',monospace;">9917833184</span>
+                        <button class="copy-btn-mini" onclick="copyToClipboard('9917833184')" title="Copy">📋</button>
+                    </div>
+                </div>
+                <p class="donate-thanks">Cảm ơn sự ủng hộ của bạn! 🙏</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="closeModal('donateModal')" style="width:100%;">❤️ Đóng</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Delete Modal -->
+    <div class="modal-overlay" id="confirmModal">
+        <div class="modal" style="max-width: 420px;">
+            <div class="modal-header">
+                <h3 id="confirmTitle">⚠️ Xác nhận</h3>
+                <button class="modal-close" onclick="closeModal('confirmModal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted" id="confirmMessage">Bạn có chắc chắn muốn xóa?</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('confirmModal')">Hủy</button>
+                <button class="btn btn-danger" id="confirmDeleteBtn">🗑️ Xóa</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/i18n.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+
+</html>
