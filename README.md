@@ -41,6 +41,7 @@
 3. Chọn template **"Edit zone DNS"** hoặc tạo Custom Token với:
    - `Zone > Zone > Read`
    - `Zone > DNS > Edit`
+   - `Account > Account Settings > Read`
    - `Account > Cloudflare Tunnel > Edit` *(nếu dùng Tunnel)*
 4. Sao chép token
 
