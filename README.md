@@ -1,4 +1,4 @@
-# 🌐 Cloudflare DDNS Manager
+# 🌐 Cloudflare DDNS Manager V2.1
 
 <div align="center">
 
